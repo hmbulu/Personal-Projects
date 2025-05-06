@@ -1,0 +1,415 @@
+---
+title: "Final"
+author: "Hiram M"
+date: "2025-04-19"
+output:
+  html_document:
+    df_print: paged
+---
+
+# LOAD DATA
+
+```{r}
+#Load in DataSet
+library(readr)
+Life_Expectancy_Data <- read_csv("Life-Expectancy-Data-Updated.csv", 
+    col_types = cols(Year = col_factor(levels = c("2000", 
+        "2001", "2002", "2003", "2004", "2005", 
+        "2006", "2007", "2008", "2009", "2010", 
+        "2011", "2012", "2013", "2014", "2015")), 
+        Infant_deaths = col_number(), Under_five_deaths = col_number(), 
+        Adult_mortality = col_number(), Alcohol_consumption = col_number(), 
+        Hepatitis_B = col_integer(), Measles = col_integer(), 
+        BMI = col_number(), Polio = col_integer(), 
+        Diphtheria = col_integer(), Incidents_HIV = col_number(), 
+        GDP_per_capita = col_number(), Population_mln = col_number(), 
+        Thinness_ten_nineteen_years = col_number(), 
+        Thinness_five_nine_years = col_number(), 
+        Schooling = col_number(), Economy_status_Developed = col_logical(), 
+        Economy_status_Developing = col_logical(), 
+        Life_expectancy = col_number()))
+head(Life_Expectancy_Data)
+```
+
+```{r}
+#Clean Data Set Names
+library(janitor)
+colnames(Life_Expectancy_Data) <- make_clean_names(colnames(Life_Expectancy_Data))
+```
+
+# EXPLORATORY ANALYSIS
+
+```{r}
+#summary statistics
+summary(Life_Expectancy_Data)
+```
+
+```{r}
+#summary statistics
+str(Life_Expectancy_Data)
+```
+
+```{r}
+#Show any Missing Values
+library(naniar)
+gg_miss_var(Life_Expectancy_Data, show_pct = F)
+```
+
+```{r}
+#Working Dataset
+Life<- Life_Expectancy_Data 
+```
+
+```{r}
+#Life Expectancy Analysis (Box plot/ Bar Chart / Histogram)
+library(ggplot2)
+colnames(Life)
+
+ggplot(Life, aes(life_expectancy)) + geom_histogram(color = 'black') + labs(title = 'Life Expectancy distribution', y = 'Count' , x = 'Life Expectancy (Yrs)') #Just to measure the overall life expectancy and look at the distribution through all the data. #Observation: We can observe a large density of life expectancy around 75 years old, if we were particularly interested in looking at specific regions it could show us which could be of interest.
+
+ggplot(Life, aes(x = life_expectancy)) + geom_histogram(color = 'black') + facet_wrap(~year) + labs(title = 'Life Expectancy distbution across years') #Visualize distribution of life expectancy through years 
+
+ggplot(Life, aes(x = economy_status_developing ,y = life_expectancy, fill = economy_status_developing)) + geom_boxplot(show.legend = FALSE) + labs(title = 'Life Expectancy Based On Nations Status' , x = 'Status' , y = 'Life Expectancy (Yrs)') #Box plot based on life expectancy of nations with a status of either developed or developing #Observation: After looking at the box plot we can clearly see observations with a status of 'Developed' had a higher median life expectency compared to their counterparts (~76 to ~69 years old). It is also worth noting that there are signficantly more developing observations then devloped which could affect the accuracy of the data.
+
+ggplot(Life, aes(x = economy_status_developing,y = life_expectancy, fill = economy_status_developing)) + geom_boxplot(show.legend = FALSE) +facet_wrap(~year) +labs(title = 'Life Expectancy Based On Nations Status' , x = 'Status' , y = 'Life Expectancy (Yrs)') 
+
+ggplot(Life, aes(x = economy_status_developing, fill = economy_status_developing)) + geom_bar(show.legend = FALSE) + facet_wrap(~year) + scale_y_log10() + labs(title = 'Distribution of Status Across Years', y = '', x = '' ) #Bar Chart based on change in status among countries from the data
+
+
+ggplot(Life, aes(x = life_expectancy, y = schooling)) + geom_point() + facet_wrap(~economy_status_developing, scales = 'free') + labs(title = 'Life expectancy based on schooling levels of nations and status', x = 'Life Expectancy (Yrs)' , y = 'Schooling scores') #Scatter plot looking at how schooling levels and status effect a populations life expectancy. #Observation: Interestingly we can see that observations with a higher schooling score increased in life expectancy as well, but when separating the data based on status this trend is clear for observations with a status of 'Developing' while the scatter plot for the 'Developed' observations shows a more spread out data distribution, showing little to no correlation with schooling scores and life expectancy 
+
+```
+
+```{r}
+library(dplyr)
+library(countrycode)
+#Connect each country to their respective continent
+
+Life <- Life %>%
+  mutate(continent = countrycode(sourcevar= country,        # the column with your country names
+      origin      = "country.name", # if your df$country are full names like "France", "Brazil", etc.
+      destination = "continent"     # maps to one of Africa, Americas, Asia, Europe, Oceania
+    )
+  )
+
+```
+
+```{r}
+Life_numeric <- Life[, sapply(Life, is.numeric)]
+pairs(~ adult_mortality + infant_deaths + alcohol_consumption + hepatitis_b + bmi + under_five_deaths + polio + measles + diphtheria + incidents_hiv,data = Life_numeric, cex.axis = 0.8)
+```
+
+## EXPLORATORY - HEAT MAP's
+
+```{r}
+library(scales)
+library(sf)
+library(ggplot2)
+library(rnaturalearth)
+library(rnaturalearthdata)
+library(dplyr)
+
+#Preperation for Creating Heat Map
+world <- ne_countries(scale = "medium", returnclass = "sf") %>%
+  dplyr::select(iso_a3, geometry, name_long)
+
+Life_Map <- world %>%
+  left_join(Life, by = c("name_long" = "country"))
+
+Life_Map<- Life_Map %>%
+    filter(year %in% 2015)
+```
+
+```{r}
+Life_Map <- na.omit(Life_Map)
+Life_Map<- Life_Map %>%
+    mutate(gdp = gdp_per_capita * population_mln)
+```
+
+```{r}
+library(tmap)
+library(leaflet)
+
+#by GDP
+pal_cont2 <- colorNumeric(
+  palette = "viridis",
+  domain  = Life_Map$gdp)
+
+leaflet(Life_Map) %>%
+  addTiles() %>%
+  addPolygons(
+    fillColor   = ~pal_cont2(gdp),
+    weight      = 0.5,
+    color       = "white",
+    fillOpacity = 0.8,
+    label       = ~paste0(name_long, ": ", comma(gdp)),
+    highlight   = highlightOptions(
+                    weight       = 2,
+                    color        = "#666",
+                    bringToFront = TRUE
+                  )
+    ) %>%
+    addLegend(
+    pal    = pal_cont2,
+    values = ~gdp,
+    title  = "GDP",
+    labFormat = labelFormat(big.mark = ","),
+    position  = "bottomright")
+```
+
+```{r}
+#by Life Expectancy
+
+pal_cont1 <- colorNumeric(
+  palette = "viridis",
+  domain  = Life_Map$life_expectancy)
+
+leaflet(Life_Map) %>%
+  addTiles() %>%
+  addPolygons(
+    fillColor   = ~pal_cont1(life_expectancy),
+    weight      = 0.5,
+    color       = "white",
+    fillOpacity = 0.8,
+    label       = ~paste0(name_long, ": ", comma(life_expectancy)),
+    highlight   = highlightOptions(
+                    weight       = 2,
+                    color        = "#666",
+                    bringToFront = TRUE
+                  )
+    ) %>%
+    addLegend(
+    pal    = pal_cont1,
+    values = ~life_expectancy,
+    title  = "Life Expectancy",
+    labFormat = labelFormat(big.mark = ","),
+    position  = "bottomright")
+
+```
+
+
+## MODELING - Linear Model
+
+```{r}
+#Linear Model
+library(car)
+life_lm <- lm(life_expectancy ~ ., data = Life)
+summary(life_lm)
+plot(life_lm)
+
+#We have significant evidence at the 5% level of significance to conclude that at least one of the #predictors are useful.
+
+#Observation: There is a strong chance of co linearity within the model as we can observe in the scatter plot matrix with variables such as Infant Mortality and Under 5 deaths. The following will try and see what issues can be solved as to co linearity. 
+
+```
+
+```{r}
+#Selection (Forward or Backwards)
+library(olsrr)
+library(MASS)
+library(vip)
+life_exp_for <- lm(life_expectancy ~ 1, data = Life)
+life_lm_health <- lm(life_expectancy ~ . -country -economy_status_developing - continent - schooling -year -region -gdp_per_capita , data = Life)
+summary(life_lm_health)
+
+Life_health <- subset(Life, select = -c(country,economy_status_developing,continent,schooling,year,region,gdp_per_capita))
+
+life_ex_step <- ols_step_forward_p(life_lm_health, penter = 0.05) 
+life_back_step <- stepAIC(life_lm_health, direction = 'backward')
+life_mix_step <- stepAIC(life_lm_health , direction = 'forward')
+
+forward_lm_life <- lm(life_expectancy ~ adult_mortality + infant_deaths + economy_status_developed + under_five_deaths + alcohol_consumption + incidents_hiv + bmi + thinness_ten_nineteen_years + hepatitis_b + measles , data = Life_health)
+summary(forward_lm_life) #R-squared = 0.9778
+
+backward_lm_life <- lm(life_expectancy ~ measles + thinness_ten_nineteen_years + bmi + alcohol_consumption + incidents_hiv + infant_deaths + economy_status_developed + under_five_deaths + adult_mortality , data = Life_health)
+summary(backward_lm_life)#R-squared = 0.9777
+
+#We see that the forward selection model has a very slight increase in r-square by including the hepatitis_b factor within it. Both these models are nearly identical and we can see what model is overall better. 
+
+AIC(forward_lm_life, backward_lm_life)
+#Forward: AIC = 10084.54	
+#Backward: AIC = 10100.31
+#Forward model is slightly better
+
+BIC(forward_lm_life, backward_lm_life)
+#Forward: BIC = 10156.06
+#Backward: BIC = 10165.87
+#Forward model is slightly better 
+
+plot(forward_lm_life)
+plot(backward_lm_life)
+
+vip(forward_lm_life)
+
+vif(forward_lm_life)
+#VIF measures co linearity within our model and we see that infant_deaths and under_five_deaths are extremlly correlated. And after amputation of each from the model we see that the R^2 value of the model is better with the inclusion of infant_deaths instead of under_five_deaths
+
+life_new <- lm(life_expectancy ~ adult_mortality + infant_deaths + economy_status_developed + alcohol_consumption + incidents_hiv + bmi + thinness_ten_nineteen_years + hepatitis_b + measles , data = Life_health)
+
+vif(life_new)
+#After the amputation, we see infant deaths significantly lower down to the levels of the fellow factors
+
+
+#Diseases only
+ggplot(Life , aes(economy_status_developed , adult_mortality, fill = economy_status_developed)) + geom_boxplot()
+
+Life_diseases <- Life %>%
+  dplyr::select(economy_status_developed,alcohol_consumption,bmi,incidents_hiv,hepatitis_b,measles,alcohol_consumption) %>%
+  group_by(desc(economy_status_developed))
+
+Life_diseases <- lm(life_expectancy ~ alcohol_consumption + bmi + incidents_hiv + hepatitis_b + measles + alcohol_consumption, data = Life)
+plot(Life_diseases)
+vip(Life_diseases)
+
+summary(Life_diseases)
+
+forward_lm_life
+```
+
+```{r}
+#Splitting data into testing and training in order to measure test MSE's in order to select which Selection process is the most effective
+
+library(rsample)
+
+Life_split <- initial_split(Life_health , prop = 0.8 , strata = life_expectancy)
+
+Life_train <- Life_split %>% training()
+
+Life_test <- Life_split %>% testing()
+
+predict_forward <- predict(forward_lm_life , Life_test)
+
+predict_backward <- predict(backward_lm_life , Life_test)
+
+actual_values <- Life_test$life_expectancy
+
+mse_forward <- mean((actual_values - predict_forward)^2)
+
+mse_backward <- mean((actual_values - predict_backward)^2)
+
+mse_forward #The MSE score of the forward selection model displays a lower MSE = 1.92, meaning its the superior model
+mse_backward #Higher MSE score compared to the backward selection model displaying an MSE score of 1.96.
+```
+
+## MODELING - LOGISTIC REGRESSION
+
+```{r}
+#Dataset with only health related factors
+Life_clean <- Life %>%
+    dplyr::select(-country, -continent, -year, -region, -economy_status_developing,-gdp_per_capita,-population_mln,-schooling)
+```
+
+```{r}
+#Full additive model
+glm0 <- glm(economy_status_developed ~., data = Life_clean, family = binomial)
+summary(glm0)
+```
+
+<interpretation>
+
+```{r}
+#Predicting responses with Model
+lr.probs=predict(glm0,type="response")
+round(lr.probs[1:10])
+```
+
+```{r}
+#Attach T/F to probability
+glm.pred=rep("FALSE",2,864)
+
+glm.pred[lr.probs>.5] <- "TRUE"
+
+```
+
+```{r}
+#Conf Matrix of predicted v actual
+table(glm.pred,Life$economy_status_developed)
+```
+
+MODEL WITH
+
+```{r}
+#Split Training/Testing Datasets
+library(rsample)
+set.seed(433)
+
+Split <- initial_split(Life_clean , prop = 0.75 , strata = economy_status_developed)
+
+train <- Split %>% training()
+
+test <- Split %>% testing()
+
+Estatus.test = Life_clean$economy_status_developed[!train]
+
+```
+
+```{r}
+#Fit model on training dataset
+glm1 = glm(economy_status_developed ~., data = train, family = "binomial")
+summary(glm1)
+```
+
+```{r}
+#Predict Model on Test Dataset
+lr.probs1 = predict(glm1, test, type="response")
+```
+
+```{r}
+#Attach T/F to probability
+glm.pred1 =rep("FALSE", 537)
+
+glm.pred1[lr.probs1>.5] <- "TRUE"
+```
+
+```{r}
+#Conf Mat of Predicted vs Actual
+table(glm.pred1, test$economy_status_developed)
+```
+
+
+## MODELING - Random Forest
+
+```{r}
+#Prepare for Random Forest
+Life_clean$economy_status_developed <-as.factor(Life_clean$economy_status_developed)
+levels(Life_clean$economy_status_developed) <- c("Developing","Developed")
+
+```
+
+```{r}
+#Split Between Training/Testing Datasets
+set.seed(42)
+n        <- nrow(Life_clean)
+train_i  <- sample(n, size = floor(0.7 * n))
+train1    <- Life_clean[train_i, ]
+test1     <- Life_clean[-train_i, ]
+Life_clean <- na.omit(Life_clean)
+```
+
+```{r}
+#Random Forest Model
+library(randomForest)
+rf_model <- randomForest(
+  economy_status_developed ~ .,
+  data       = train1,
+  ntree      = 500,
+  importance = TRUE)
+print(rf_model)
+```
+
+```{r}
+#Variable Importance
+varImpPlot(rf_model)
+```
+
+```{r}
+#Conf Mat and Stats
+pred_class <- predict(rf_model, test1)
+
+# 2b. Confusion matrix & overall accuracy
+library(caret)
+rf_test <- confusionMatrix(pred_class, test1$economy_status_developed)
+print(rf_test)
+```
+
+
